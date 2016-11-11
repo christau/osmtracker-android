@@ -73,6 +73,7 @@
   <string name="prefs_osm_clear_oauth_data_dialog">Du musst OSMTracker neu erlauben, Tracks hochladen zu dürfen. Bist Du sicher?</string>
   <string name="prefs_map_tile">Hintergrund-Karte Anbieter</string>
   <string name="prefs_map_tile_summary"></string>
+  <string name="prefs_pause_on_wifi_connect">Bei Wifi Verbindung Pausieren</string>
   <string-array name="prefs_map_tile_keys">
     <item>Mapnik</item>
     <item>Cycle Map</item>

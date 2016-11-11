@@ -21,6 +21,11 @@
 		<EditTextPreference android:key="gps.logging.interval"
 			android:title="@string/prefs_gps_logging_interval" android:summary="@string/prefs_gps_logging_interval_summary"
 			android:defaultValue="0" android:inputType="number"></EditTextPreference>
+		<me.guillaumin.android.osmtracker.activity.WifiSsidPreference
+			android:key="pause_on_wifi_ssids"
+			android:negativeButtonText="@string/menu_cancel"
+			android:positiveButtonText="@string/menu_save"
+			android:title="@string/prefs_pause_on_wifi_connect" />
 	</PreferenceCategory>
 	
 	<PreferenceCategory android:title="@string/prefs_output">

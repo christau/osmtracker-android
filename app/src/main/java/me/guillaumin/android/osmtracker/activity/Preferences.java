@@ -2,6 +2,7 @@ package me.guillaumin.android.osmtracker.activity;
 
 import java.io.File;
 import java.io.FilenameFilter;
+import java.util.Set;
 
 import me.guillaumin.android.osmtracker.OSMTracker;
 import me.guillaumin.android.osmtracker.R;
@@ -84,7 +85,22 @@ public class Preferences extends PreferenceActivity {
 				return true;
 			}
 		});
-		
+
+		// Pause on WiFi connection
+		pref = findPreference(OSMTracker.Preferences.KEY_PAUSE_ON_WIFI_CONNECT);
+		Set<String> str = prefs.getStringSet(OSMTracker.Preferences.KEY_PAUSE_ON_WIFI_CONNECT,null);
+		final String active = getResources().getString(R.string.active);
+		final String inactive = getResources().getString(R.string.inactive);
+		pref.setSummary(str==null?inactive:active);
+		pref.setOnPreferenceChangeListener(new OnPreferenceChangeListener() {
+			@Override
+			public boolean onPreferenceChange(Preference preference, Object newValue) {
+				// Set summary with the number of seconds, following by "seconds"
+				preference.setSummary(newValue==null?inactive:active);
+				return true;
+			}
+		});
+
 		// Update GPS logging interval summary to the current value
 		pref = findPreference(OSMTracker.Preferences.KEY_GPS_LOGGING_INTERVAL);
 		pref.setSummary(

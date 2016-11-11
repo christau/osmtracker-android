@@ -16,6 +16,7 @@ public class OSMTracker {
 	public static final class Preferences {
 		// Property names
 		public final static String KEY_STORAGE_DIR = "logging.storage.dir";
+		public final static String KEY_PAUSE_ON_WIFI_CONNECT = "pause_on_wifi_ssids";
 		public final static String KEY_VOICEREC_DURATION = "voicerec.duration";
 		public final static String KEY_UI_THEME = "ui.theme";
 		public final static String KEY_GPS_OSSETTINGS = "gps.ossettings";

@@ -15,20 +15,28 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.SharedPreferences;
 import android.location.GpsSatellite;
 import android.location.GpsStatus;
 import android.location.Location;
 import android.location.LocationListener;
 import android.location.LocationManager;
+import android.net.ConnectivityManager;
+import android.net.NetworkInfo;
+import android.net.wifi.SupplicantState;
+import android.net.wifi.WifiInfo;
+import android.net.wifi.WifiManager;
 import android.os.Binder;
 import android.os.Bundle;
 import android.os.IBinder;
 import android.preference.PreferenceManager;
 import android.util.Log;
 
+import java.util.Set;
+
 /**
  * GPS logging service.
- * 
+ *
  * @author Nicolas Guillaumin
  *
  */
@@ -45,32 +53,37 @@ public class GPSLogger extends Service implements LocationListener {
 	 * Are we currently tracking ?
 	 */
 	private boolean isTracking = false;
-	
+
+	/**
+	 * Are we currently paused ?
+	 */
+	private boolean isPaused = false;
+
 	/**
 	 * Is GPS enabled ?
 	 */
 	private boolean isGpsEnabled = false;
-	
+
 	/**
 	 * System notification id.
 	 */
 	private static final int NOTIFICATION_ID = 1;
-	
+
 	/**
 	 * Last known location
 	 */
 	private Location lastLocation;
-	
+
 	/**
 	 * Last number of satellites used in fix.
 	 */
 	private int lastNbSatellites;
-	
+
 	/**
 	 * LocationManager
 	 */
 	private LocationManager lmgr;
-	
+
 	/**
 	 * Current Track ID
 	 */
@@ -80,26 +93,26 @@ public class GPSLogger extends Service implements LocationListener {
 	 * the timestamp of the last GPS fix we used
 	 */
 	private long lastGPSTimestamp = 0;
-	
+
 	/**
 	 * the interval (in ms) to log GPS fixes defined in the preferences
 	 */
 	private long gpsLoggingInterval;
-	
+
 	/**
 	 * sensors for magnetic orientation
 	 */
-	private SensorListener sensorListener = new SensorListener();	
+	private SensorListener sensorListener = new SensorListener();
 
 	/**
 	 * Receives Intent for way point tracking, and stop/start logging.
 	 */
 	private BroadcastReceiver receiver = new BroadcastReceiver() {
-		
+
 		@Override
 		public void onReceive(Context context, Intent intent) {
 			Log.v(TAG, "Received intent " + intent.getAction());
-			
+
 			if (OSMTracker.INTENT_TRACK_WP.equals(intent.getAction())) {
 				// Track a way point
 				Bundle extras = intent.getExtras();
@@ -112,7 +125,7 @@ public class GPSLogger extends Service implements LocationListener {
 						String uuid = extras.getString(OSMTracker.INTENT_KEY_UUID);
 						String name = extras.getString(OSMTracker.INTENT_KEY_NAME);
 						String link = extras.getString(OSMTracker.INTENT_KEY_LINK);
-						
+
 						dataHelper.wayPoint(trackId, lastLocation, lastNbSatellites, name, link, uuid, sensorListener.getAzimuth(), sensorListener.getAccuracy());
 					}
 				}
@@ -141,21 +154,62 @@ public class GPSLogger extends Service implements LocationListener {
 				}
 			} else if (OSMTracker.INTENT_STOP_TRACKING.equals(intent.getAction()) ) {
 				stopTrackingAndSave();
+			} else if ("android.net.wifi.STATE_CHANGE".equals(intent.getAction())) {
+
+				NetworkInfo networkInfo = intent.getParcelableExtra(WifiManager.EXTRA_NETWORK_INFO);
+				if(networkInfo.isConnected() && !isPaused) {
+					if(mSsids!=null) {
+						WifiManager wifiManager = (WifiManager) getSystemService (Context.WIFI_SERVICE);
+						WifiInfo info = wifiManager.getConnectionInfo ();
+						String ssid  = info.getSSID();
+						if(mSsids.contains(ssid)) {
+							pauseTracking(true);
+							isPaused=true;
+						}
+					}
+				}
+				else if(!networkInfo.isConnected() && isPaused){
+					pauseTracking(false);
+				}
+				return;
+			} else if (ConnectivityManager.CONNECTIVITY_ACTION.equals(intent.getAction())) {
+
+				NetworkInfo networkInfo = intent.getParcelableExtra(ConnectivityManager.EXTRA_NETWORK_INFO);
+				if(networkInfo.getType() == ConnectivityManager.TYPE_WIFI && networkInfo.isConnected() && !isTracking()) {
+
+				}
+				else if(!networkInfo.isConnected() && isTracking()) {
+
+				}
+				return;
 			}
+
 		}
 	};
-	
+
+	private void pauseTracking(boolean pause)
+	{
+		if(isPaused != pause ) {
+			isPaused=pause;
+			if(isPaused)
+				lmgr.removeUpdates(this);
+			else
+				lmgr.requestLocationUpdates(LocationManager.GPS_PROVIDER, 0, 0, this);
+		}
+	}
+
 	/**
 	 * Binder for service interaction
 	 */
 	private final IBinder binder = new GPSLoggerBinder();
+	private Set<String> mSsids;
 
 	@Override
 	public IBinder onBind(Intent intent) {
 		Log.v(TAG, "Service onBind()");
 		return binder;
 	}
-	
+
 	@Override
 	public boolean onUnbind(Intent intent) {
 		Log.v(TAG, "Service onUnbind()");
@@ -165,7 +219,7 @@ public class GPSLogger extends Service implements LocationListener {
 			Log.v(TAG, "Service self-stopping");
 			stopSelf();
 		}
-		
+
 		// We don't want onRebind() to be called, so return false.
 		return false;
 	}
@@ -180,20 +234,22 @@ public class GPSLogger extends Service implements LocationListener {
 		 * Returns itself.
 		 * @return the GPS Logger service
 		 */
-		public GPSLogger getService() {			
+		public GPSLogger getService() {
 			return GPSLogger.this;
 		}
 	}
-	
+
 	@Override
-	public void onCreate() {	
+	public void onCreate() {
 		Log.v(TAG, "Service onCreate()");
 		dataHelper = new DataHelper(this);
 
+
 		//read the logging interval from preferences
-		gpsLoggingInterval = Long.parseLong(PreferenceManager.getDefaultSharedPreferences(this.getApplicationContext()).getString(
+		SharedPreferences prefm = PreferenceManager.getDefaultSharedPreferences(this.getApplicationContext());
+		gpsLoggingInterval = Long.parseLong(prefm.getString(
 				OSMTracker.Preferences.KEY_GPS_LOGGING_INTERVAL, OSMTracker.Preferences.VAL_GPS_LOGGING_INTERVAL)) * 1000;
-		
+
 		// Register our broadcast receiver
 		IntentFilter filter = new IntentFilter();
 		filter.addAction(OSMTracker.INTENT_TRACK_WP);
@@ -201,18 +257,36 @@ public class GPSLogger extends Service implements LocationListener {
 		filter.addAction(OSMTracker.INTENT_DELETE_WP);
 		filter.addAction(OSMTracker.INTENT_START_TRACKING);
 		filter.addAction(OSMTracker.INTENT_STOP_TRACKING);
+		mSsids = prefm.getStringSet(OSMTracker.Preferences.KEY_PAUSE_ON_WIFI_CONNECT,null);
+		if(mSsids!=null) {
+			filter.addAction(WifiManager.NETWORK_STATE_CHANGED_ACTION);
+			filter.addAction(ConnectivityManager.CONNECTIVITY_ACTION);
+		}
 		registerReceiver(receiver, filter);
 
 		// Register ourselves for location updates
 		lmgr = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
-		lmgr.requestLocationUpdates(LocationManager.GPS_PROVIDER, 0, 0, this);
-		
+		if(mSsids!=null) {
+			WifiManager wifiManager = (WifiManager) getSystemService(Context.WIFI_SERVICE);
+			WifiInfo wifiInfo;
+
+			wifiInfo = wifiManager.getConnectionInfo();
+			if (wifiInfo.getSupplicantState() == SupplicantState.COMPLETED) {
+				if(mSsids.contains(wifiInfo.getSSID())) {
+					pauseTracking(true);
+				}
+			}
+		}
+		else
+			pauseTracking(false);
+
+
 		//register for Orientation updates
 		sensorListener.register(this);
-				
+
 		super.onCreate();
 	}
-	
+
 	@Override
 	public int onStartCommand(Intent intent, int flags, int startId) {
 		Log.v(TAG, "Service onStartCommand(-,"+flags+","+startId+")");
@@ -309,11 +383,11 @@ public class GPSLogger extends Service implements LocationListener {
 		startTrackLogger.putExtra(TrackContentProvider.Schema.COL_TRACK_ID, currentTrackId);
 		PendingIntent contentIntent = PendingIntent.getActivity(this, 0, startTrackLogger, PendingIntent.FLAG_UPDATE_CURRENT);
 		n.flags = Notification.FLAG_FOREGROUND_SERVICE | Notification.FLAG_ONGOING_EVENT | Notification.FLAG_NO_CLEAR;
-		n.setLatestEventInfo(
+		/*n.setLatestEventInfo(
 				getApplicationContext(),
 				getResources().getString(R.string.notification_title).replace("{0}", (currentTrackId > -1) ? Long.toString(currentTrackId) : "?"),
 				getResources().getString(R.string.notification_text),
-				contentIntent);
+				contentIntent);*/
 		return n;
 	}
 	

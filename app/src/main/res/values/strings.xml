@@ -152,4 +152,8 @@
 	<!-- OSM map view -->
 	<string name="displaytrackmap">OpenStreetMap track display</string>
 
+	<string name="activate">Activate</string>
+	<string name="active">Active</string>
+	<string name="inactive">Inactive</string>
+
 </resources>
